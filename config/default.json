@@ -1,0 +1,13 @@
+{
+  "endpointInfo": {
+    "vstsBaseUri": "https://domoreexp.visualstudio.com/defaultcollection",
+    "vstsProject": "MSTeams"
+  },
+  "constants": {
+    "fieldsToRollup": ["Microsoft.VSTS.Scheduling.RemainingWork", "Microsoft.VSTS.Scheduling.OriginalEstimate"],
+    "maxIdsInSingleCall": 200,
+    "batchSize": 50,
+    "maxUpdates": 100,
+    "areaPath": "MSTeams\\Web Client\\Meetings\\Broadcast"
+  }
+}

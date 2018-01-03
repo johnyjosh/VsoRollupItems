@@ -5,10 +5,12 @@
   "main": "app.js",
   "dependencies": {
     "command-line-args": "^4.0.7",
+    "config": "^1.29.0",
     "fs": "0.0.1-security",
     "lodash": "^4.17.4",
     "path": "^0.12.7",
     "q": "^1.5.1",
+    "request": "^2.83.0",
     "request-promise": "^4.2.2"
   },
   "devDependencies": {},

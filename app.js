@@ -10,44 +10,33 @@ const path = require('path');
 const _ = require('lodash');
 const fs = require('fs');
 const cmdargs = require('command-line-args'); // https://www.npmjs.com/package/command-line-args
+const config = require('config');
 
 // Access the personal access token from a local file you need to create
 // Info on how to create PAT token: https://docs.microsoft.com/en-us/vsts/accounts/use-personal-access-tokens-to-authenticate
-const patFile = path.dirname(require.main.filename) + '\\personal_access_token.json';
+const patFile = path.dirname(require.main.filename) + '\\config\\personal_access_token.json';
 const pat = JSON.parse(fs.readFileSync(patFile));
 const encodedPat = encodePat(pat.token);
-
-const queryId = 'ebdee26e-0fa5-4330-8df4-db07b131ab38';
-const vstsConstants = {
-  baseVstsUri: 'https://domoreexp.visualstudio.com/defaultcollection',
-  project: 'MSTeams',
-  fieldsToRollup: ['Microsoft.VSTS.Scheduling.RemainingWork', 'Microsoft.VSTS.Scheduling.OriginalEstimate'],
-  maxIdsInSingleCall: 200,
-  batchSize: 50, // Updates are made in batches. Just picking a number for now, will find more precise limits later
-  maxUpdates: 100 // Just a safety net in case there is a logical bug in the code that results in too many work items being updated
-};
 
 const args = processCommandline();
 
 // 1. Execute the query to retrieve the hierarchy of work items in the given area path.
-// Note that the query is from WorkItemLinks rather than from WorkItems.
+// Note that we can't plug in any arbitrary query the code logic assumes that the query is from WorkItemLinks rather than from WorkItems.
 // The other option would have been to start from all the top level items (Epics)
 // and then query for children recursively and do the roll ups per top level item.
-//
-// If we want to execute a pre-canned query, then the following GET will allow for that:
-// vstsApi('GET', `${vstsConstants.baseVstsUri}/${vstsConstants.project}/_apis/wit/wiql/${queryId}`)
-//
-vstsApi('POST', `${vstsConstants.baseVstsUri}/${vstsConstants.project}/_apis/wit/wiql`,
+
+const vstsConstants = config.get('constants');
+const vstsEndpointInfo = config.get('endpointInfo');
+vstsApi('POST', `${vstsEndpointInfo.vstsBaseUri}/${vstsEndpointInfo.vstsProject}/_apis/wit/wiql`,
     {
-        query: "SELECT [System.Id] \
-            FROM WorkItemLinks \
-            WHERE [System.Links.LinkType] = 'System.LinkTypes.Hierarchy-Forward' and \
-                Source.[System.WorkItemType] in ('Epic', 'Feature') and \
-                Source.[System.AreaPath] under 'MSTeams\\Web Client\\Meetings\\Broadcast' and \
-                Target.[System.AreaPath] under 'MSTeams\\Web Client\\Meetings\\Broadcast' and \
-                Target.[System.AreaPath] not under 'MSTeams\\Web Client\\Meetings\\Broadcast\\Design' and \
-                Target.[System.WorkItemType] in ('Feature', 'Requirement', 'Task') \
-                MODE (Recursive)"
+        query: `SELECT [System.Id] \
+        FROM WorkItemLinks \
+        WHERE [System.Links.LinkType] = 'System.LinkTypes.Hierarchy-Forward' and \
+            Source.[System.WorkItemType] in ('Epic', 'Feature') and \
+            Source.[System.AreaPath] = '${vstsConstants.areaPath}' and \
+            Target.[System.AreaPath] = '${vstsConstants.areaPath}' and \
+            Target.[System.WorkItemType] in ('Feature', 'Requirement', 'Task', 'Bug') \
+            MODE (Recursive)`
     })
 .then(queryResults => {
     // 2. Restructure the hierarchy info into a more convenient format that brings all
@@ -187,7 +176,7 @@ function updateCosts(vsoItems) {
         var deferred = q.defer();
         resultPromises.push(deferred.promise);
         
-        vstsApi('POST', `${vstsConstants.baseVstsUri}/_apis/wit/$batch`, patchRequests)
+        vstsApi('POST', `${vstsEndpointInfo.vstsBaseUri}/_apis/wit/$batch`, patchRequests)
         .then(x => deferred.resolve(idsToUpdate.length))
         .catch(error => deferred.reject(error));
     });
@@ -254,7 +243,7 @@ function getWorkItemFields(ids) {
         resultPromises.push(deferred.promise);
         const idsCappedJoined = _.join(idsCapped);
         const fields = 'System.Id,System.Title,System.WorkItemType,System.State,' + _.join(vstsConstants.fieldsToRollup);
-        vstsApi('GET', `${vstsConstants.baseVstsUri}/_apis/wit/workitems?ids=${idsCappedJoined}&fields=${fields}`)
+        vstsApi('GET', `${vstsEndpointInfo.vstsBaseUri}/_apis/wit/workitems?ids=${idsCappedJoined}&fields=${fields}`)
         .then(response => {
             // The response is {count, value} where value is the array of VSO items.
             _.each(response.value, workItemFields => {
