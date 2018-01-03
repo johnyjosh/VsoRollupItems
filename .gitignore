@@ -239,3 +239,4 @@ FakesAssemblies/
 .sln.ide/
 *.tmp.txt
 node_modules/
+personal_access_token.json
