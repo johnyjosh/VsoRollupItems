@@ -120,9 +120,10 @@ function printUpdatePlan(vsoItems) {
 // and if it is not the same as what is already in VSO, only then do we want to update.
 function evaluateUpdateRequired(workItemFields) {
     var netSum = 0;
+
     var isSomeValueUpdated = _.some(vstsConstants.fieldsToRollup, fieldName => {
         var rollupValue = workItemFields.state.rollupInfo[fieldName];
-        var currentValue = workItemFields.fields[fieldName];
+        var currentValue = workItemFields.fields[fieldName] || 0;
         netSum += rollupValue + currentValue;
         return (rollupValue != undefined && currentValue != rollupValue);
     });
