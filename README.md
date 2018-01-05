@@ -3,13 +3,16 @@
 Use the VSTS REST APIs to automatically do the cost roll-ups for a given backlog.
 
 Initial setup to use the tool:
-1. Clone the repo.
-2. Create a config\personal_access_token.json file with {"token":"Your PAT"}. Refer [here](https://docs.microsoft.com/en-us/vsts/accounts/use-personal-access-tokens-to-authenticate) for how to do that in VSO.
-3. Update config\default.json with your VSO information, namely the area path you want to run this on.
+1. Clone the repo. The following command will create a VsoRollupItems folder in the current working directory.
+``` git clone https://github.com/johnyjosh/VsoRollupItems.git ```
+2. Get the npm packages.
+``` npm install ```
+3. Create a config\personal_access_token.json file with {"token":"Your PAT"}. Refer [here](https://docs.microsoft.com/en-us/vsts/accounts/use-personal-access-tokens-to-authenticate) for how to do that in VSO.
+4. Update config\default.json with your VSO information, namely the area path you want to run this on.
 
 Now you can do a dry run using the "-n" option (-h for help on other options). This allows you to see what the tool would do, but it does not actually update VSO, so it is safe to use it in this mode.
 ```
-node app.js -n -v
+node app.js -n
 ```
 
 *Please note the following caveats:
