@@ -351,7 +351,7 @@ function processCommandline() {
     }
 
     if (args.safe) {
-        console.log(`Safe mode enabled, updates will be computed, but not persisted to VSO.`);
+        console.log(`Safe mode enabled, updates will be computed, but not persisted to VSO. Use "-h" for help.`);
     }
     
     if (args.verbose) {
