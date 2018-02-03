@@ -2,6 +2,9 @@
  * Program to automatically roll-up cost fields for a given set of VSO work items.
  * This will recompute from the leaf nodes up, so any saved costs in the parent work items
  * is completely ignored and will get overwritten.
+ * Items with all cost fields set to undefined through the roll up heirarchy will be ignored
+ * (ie: the program will not overwrite those undefined fields with zeroes). This is because
+ * often in a backlog the newly created items haven't been costed.
  */
 "use strict";
 const request = require("request-promise");
@@ -19,6 +22,10 @@ const pat = JSON.parse(fs.readFileSync(patFile));
 const encodedPat = encodePat(pat.token);
 
 const args = processCommandline();
+if (args.help) {
+    showHelp();
+    return;
+}
 
 // 1. Execute the query to retrieve the hierarchy of work items in the given area path.
 // Note that we can't plug in any arbitrary query the code logic assumes that the query is from WorkItemLinks rather than from WorkItems.
@@ -59,7 +66,7 @@ vstsApi('POST', `${vstsEndpointInfo.vstsBaseUri}/${vstsEndpointInfo.vstsProject}
         // We create a wrapper object vsoitems that has two objects:
         // workItemsHierarchy and workItemsWithFields
         // Both are indexed by work item ID.
-        // 1. workItemsHierarchy[id] is an array of direct child work item IDs (not recursive).
+        // 1. workItemsHierarchy[id] is an array of direct child work item IDs (indirect descendants not included).
         // 2. workItemsWithFields[id].fields has the cost info from VSO.
         //    workItemsWithFields[id].state is where the computed rollup and misc. state flags are maintained.
         return {
@@ -299,6 +306,15 @@ function encodePat(pat) {
 }
 
 function showHelp() {
+    console.log(`--help (or -h)`);
+    console.log(`   Show this help.`);
+    console.log('');
+    console.log(`--safe (or -n)`);
+    console.log(`   Do the rollup calculations, but don't actually commit to VSO. This is the default behavior if --apply is not explicitly specified.`);
+    console.log('');
+    console.log(`--apply (or -a)`);
+    console.log(`   Do the rollup calculations and commit to VSO.`);
+    console.log('');
     console.log(`--forcecap N (or -f N)`);
     console.log(`   Forces that no more than N entries will be updated in a single run of the program.`);
     console.log(`   Best to set some low limits like 1 or 2 items until you are sure the program is doing what you expect.`);
@@ -308,8 +324,6 @@ function showHelp() {
     console.log(`   In verbose mode, the program will also show the set of rows that were computed but skipped for update because`);
     console.log(`   the computed values were the same as the old values.`);
     console.log('');
-    console.log(`--safe (or -n)`);
-    console.log(`   Do the rollup calculations, but don't actually commit to VSO.`);
 }
 
 function processCommandline() {
@@ -317,18 +331,25 @@ function processCommandline() {
         { name: 'forcecap', alias: 'f', type: Number },
         { name: 'verbose', alias: 'v', type: Boolean },
         { name: 'safe', alias: 'n', type: Boolean},
+        { name: 'apply', alias: 'a', type: Boolean},
         { name: 'help', alias: 'h', type: Boolean}
     ];
     const args = cmdargs(options);
-    
+
     if (args.help) {
-        showHelp();
-        return;
+        return args;
     }
     
     if (args.forcecap) {
         console.log(`Capping updates to max of ${args.forcecap}.`);
     }
+
+    if (args.apply) {
+        console.log(`Apply mode enabled, updates will be computed and persisted to VSO.`);
+    } else {
+        args.safe = true; // If "apply" is not provided, then assume safe mode by default
+    }
+
     if (args.safe) {
         console.log(`Safe mode enabled, updates will be computed, but not persisted to VSO.`);
     }
