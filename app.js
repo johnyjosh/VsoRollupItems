@@ -154,7 +154,8 @@ function updateCosts(vsoItems) {
 
     var deferred = q.defer();
     if (chunkedIds.length == 0) {
-        return deferred.resolve(0);
+        deferred.resolve(0);
+        return deferred.promise;
     }
 
     var resultPromises = [];
