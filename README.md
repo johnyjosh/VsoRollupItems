@@ -14,13 +14,13 @@ npm install
 3. Create a config\personal_access_token.json file with {"token":"Your PAT"}. Refer [here](https://docs.microsoft.com/en-us/vsts/accounts/use-personal-access-tokens-to-authenticate) for how to do that in VSO.
 4. Update config\default.json with your VSO information, namely the area path you want to run this on.
 
-Use -h for help on the tool. 
+5. Run one of the two tools. Run with -h for help on the tool. Note that it is safe to execute them without any options since by default no vso updates will be made.
 ```
 node rollupcosts.js
-By default the tool does not actually update VSO, so it is safe to run it and see what kind of updates to expect. Then when ready you can invoke the tool with "-a" to apply/persist the changes.
+```
 ```
 node projectcosts.js
-This tool does not write back to vso for any reason. It is purely read-only and computes the cumulative sum of feature items in the area path and iteration path in stackrank order in the backlog.
+```
 
 *Please note the following caveats:
 1. There hasn't been much testing done, this is pretty raw and use it at your own risk.
