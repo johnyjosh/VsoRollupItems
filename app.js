@@ -7,106 +7,120 @@
  * often in a backlog the newly created items haven't been costed.
  */
 "use strict";
-const request = require("request-promise");
 const q = require('q');
 const path = require('path');
 const _ = require('lodash');
 const fs = require('fs');
 const cmdargs = require('command-line-args'); // https://www.npmjs.com/package/command-line-args
 const config = require('config');
+const utils = require('./utils');
 
 // Access the personal access token from a local file you need to create
 // Info on how to create PAT token: https://docs.microsoft.com/en-us/vsts/accounts/use-personal-access-tokens-to-authenticate
 const patFile = path.dirname(require.main.filename) + '\\config\\personal_access_token.json';
 const pat = JSON.parse(fs.readFileSync(patFile));
-const encodedPat = encodePat(pat.token);
 
 const args = processCommandline();
+if (!args) {
+    return; // Return on error
+}
+
 if (args.help) {
     showHelp();
     return;
 }
 
-// 1. Execute the query to retrieve the hierarchy of work items in the given area path.
-// Note that we can't plug in any arbitrary query the code logic assumes that the query is from WorkItemLinks rather than from WorkItems.
-// The other option would have been to start from all the top level items (Epics)
-// and then query for children recursively and do the roll ups per top level item.
-
 const vstsConstants = config.get('constants');
 const vstsEndpointInfo = config.get('endpointInfo');
-vstsApi('POST', `${vstsEndpointInfo.vstsBaseUri}/${vstsEndpointInfo.vstsProject}/_apis/wit/wiql`,
-    {
-        query: `SELECT [System.Id] \
-        FROM WorkItemLinks \
-        WHERE [System.Links.LinkType] = 'System.LinkTypes.Hierarchy-Forward' and \
-            Source.[System.WorkItemType] in ('Epic', 'Feature') and \
-            Source.[System.AreaPath] = '${vstsConstants.areaPath}' and \
-            Target.[System.AreaPath] = '${vstsConstants.areaPath}' and \
-            Target.[System.WorkItemType] in ('Feature', 'Requirement', 'Task', 'Bug') \
-            MODE (Recursive)`
-    })
-.then(queryResults => {
-    // 2. Restructure the hierarchy info into a more convenient format that brings all
-    //    the child items into one array.
-    var workItemsHierarchy = {};
-    _.each(queryResults.workItemRelations, elm => {
-        if (elm.rel == 'System.LinkTypes.Hierarchy-Forward') {
-            // Hierarchy-Forward represents the parent-child relationship with source
-            // being the parent and target being the children. Note that work items
-            // with no no parents have a null source but it is safe to access source.id
-            // because we of the elm.rel == Hierarchy-Forward check.
-            workItemsHierarchy[elm.source.id] = workItemsHierarchy[elm.source.id] || [];
-            workItemsHierarchy[elm.source.id].push(elm.target.id);
-        }
-    });
+var vsoConfig = new utils.VsoConfig(vstsEndpointInfo.vstsBaseUri, vstsEndpointInfo.vstsProject, pat.token);
+executeCostRollup();
+return;
 
-    // 3. Query for additional fields for each of the work items
-    return getWorkItemFields(_.map(queryResults.workItemRelations, x => x.target.id))
-    .then(workItemsWithFields => {
-        // We create a wrapper object vsoitems that has two objects:
-        // workItemsHierarchy and workItemsWithFields
-        // Both are indexed by work item ID.
-        // 1. workItemsHierarchy[id] is an array of direct child work item IDs (indirect descendants not included).
-        // 2. workItemsWithFields[id].fields has the cost info from VSO.
-        //    workItemsWithFields[id].state is where the computed rollup and misc. state flags are maintained.
-        return {
-            workItemsHierarchy: workItemsHierarchy,
-            workItemsWithFields: workItemsWithFields
-        };
+function executeCostRollup() {
+    // 1. Execute the query to retrieve the hierarchy of work items in the given area path.
+    // Note that we can't plug in any arbitrary query the code logic assumes that the query is from WorkItemLinks rather than from WorkItems.
+    // The other option would have been to start from all the top level items (Epics)
+    // and then query for children recursively and do the roll ups per top level item.
+    utils.vstsApi(
+        vsoConfig,
+        'POST',
+        `${vstsEndpointInfo.vstsBaseUri}/${vstsEndpointInfo.vstsProject}/_apis/wit/wiql`,
+        {
+            query: `SELECT [System.Id] \
+            FROM WorkItemLinks \
+            WHERE [System.Links.LinkType] = 'System.LinkTypes.Hierarchy-Forward' and \
+                Source.[System.WorkItemType] in ('Epic', 'Feature') and \
+                Source.[System.AreaPath] = '${vstsConstants.areaPath}' and \
+                Target.[System.AreaPath] = '${vstsConstants.areaPath}' and \
+                Target.[System.WorkItemType] in ('Feature', 'Requirement', 'Task', 'Bug') \
+                MODE (Recursive)`
+        })
+    .then(queryResults => {
+        // 2. Restructure the hierarchy info into a more convenient format that brings all
+        //    the child items into one array.
+        var workItemsHierarchy = {};
+        _.each(queryResults.workItemRelations, elm => {
+            if (elm.rel == 'System.LinkTypes.Hierarchy-Forward') {
+                // Hierarchy-Forward represents the parent-child relationship with source
+                // being the parent and target being the children. Note that work items
+                // with no no parents have a null source but it is safe to access source.id
+                // because we of the elm.rel == Hierarchy-Forward check.
+                workItemsHierarchy[elm.source.id] = workItemsHierarchy[elm.source.id] || [];
+                workItemsHierarchy[elm.source.id].push(elm.target.id);
+            }
+        });
+
+        // 3. Query for additional fields for each of the work items
+        return utils.getWorkItemFields(
+            vsoConfig,
+            _.map(queryResults.workItemRelations, x => x.target.id),
+            'System.Id,System.Title,System.WorkItemType,System.State,' + _.join(vstsConstants.fieldsToRollup))
+        .then(workItemsWithFields => {
+            // We create a wrapper object vsoitems that has two objects:
+            // workItemsHierarchy and workItemsWithFields
+            // Both are indexed by work item ID.
+            // 1. workItemsHierarchy[id] is an array of direct child work item IDs (indirect descendants not included).
+            // 2. workItemsWithFields[id].fields has the cost info from VSO.
+            //    workItemsWithFields[id].state is where the computed rollup and misc. state flags are maintained.
+            return {
+                workItemsHierarchy: workItemsHierarchy,
+                workItemsWithFields: workItemsWithFields
+            };
+        })
+        .catch(error => {
+            console.log("Error from getWorkItemFields()");
+            throw error;
+        })
+    })
+    .then(vsoItems => {
+        rollupCosts(vsoItems);
+        return vsoItems;
+    })
+    .then((vsoItems) => {
+        // Print out the update plan for reference
+        // TODO: Make this optional based on parameter.
+        printUpdatePlan(vsoItems);
+        return vsoItems; // Just pass it down the chain
+    })
+    .then((vsoItems) => {
+        if (args.safe) {
+            console.log("Skipping update because safe mode is enabled.");
+            return 0;
+        } else {
+            console.log("Writing updated costs into VSO.");
+            return updateCosts(vsoItems);
+        }
+    })
+    .then((updatedItemsCount) => {
+        console.log(`Count of vso items updated: ${updatedItemsCount}`);
     })
     .catch(error => {
-        console.log("Error from getWorkItemFields()");
-        throw error;
+        console.log("Encountered an error: " + error);
     })
-})
-.then(vsoItems => {
-    rollupCosts(vsoItems);
-    return vsoItems;
-})
-.then((vsoItems) => {
-    // Print out the update plan for reference
-    // TODO: Make this optional based on parameter.
-    printUpdatePlan(vsoItems);
-    return vsoItems; // Just pass it down the chain
-})
-.then((vsoItems) => {
-    if (args.safe) {
-        console.log("Skipping update because safe mode is enabled.");
-        return 0;
-    } else {
-        console.log("Writing updated costs into VSO.");
-        return updateCosts(vsoItems);
-    }
-})
-.then((updatedItemsCount) => {
-    console.log(`Count of vso items updated: ${updatedItemsCount}`);
-})
-.catch(error => {
-    console.log("Encountered an error: " + error);
-})
-.finally(() => {
-    console.log(`Done`);
-});
+    .finally(() => {
+        console.log(`Done`);
+    });
+}
 
 function printUpdatePlan(vsoItems) {
     const shortenedFieldNames = _.map(vstsConstants.fieldsToRollup, fieldName => _.replace(fieldName, "Microsoft.VSTS.Scheduling.", ""));
@@ -185,7 +199,7 @@ function updateCosts(vsoItems) {
         var deferred = q.defer();
         resultPromises.push(deferred.promise);
         
-        vstsApi('POST', `${vstsEndpointInfo.vstsBaseUri}/_apis/wit/$batch`, patchRequests)
+        utils.vstsApi(vsoConfig, 'POST', `${vstsEndpointInfo.vstsBaseUri}/_apis/wit/$batch`, patchRequests)
         .then(x => deferred.resolve(idsToUpdate.length))
         .catch(error => deferred.reject(error));
     });
@@ -224,86 +238,10 @@ function rollupCostsForItem(vsoItems, itemId) {
             rollupCostsForItem(vsoItems, childId);
             _.each(vstsConstants.fieldsToRollup, fieldName => workItemFields.state.rollupInfo[fieldName] += vsoItems.workItemsWithFields[childId].state.rollupInfo[fieldName]);
         });
-
     }
 
     workItemFields.state.isProcessed = true;
     workItemFields.state.isUpdateRequired = evaluateUpdateRequired(workItemFields);
-}
-
-// Expects an array of work item IDs.
-// Returns a hashmap where key is the item ID and value has a fields structure
-// with all the roll up fields as well as work item type.
-function getWorkItemFields(ids) {
-    var deferred = q.defer();
-    const chunkedIds = _.chunk(ids, vstsConstants.maxIdsInSingleCall);
-    var isError = false;
-
-    // We will do batched queries using a VSO REST API that can take up to 200
-    // work item IDs in a single call.        
-    // Collate all the results into a single "results" structure.
-    var results = {};
-
-    // We will need an array of promises to capture results of each REST API call
-    var resultPromises = [];
-
-    _.each(chunkedIds, idsCapped => {
-        var deferred = q.defer();
-        resultPromises.push(deferred.promise);
-        const idsCappedJoined = _.join(idsCapped);
-        const fields = 'System.Id,System.Title,System.WorkItemType,System.State,' + _.join(vstsConstants.fieldsToRollup);
-        vstsApi('GET', `${vstsEndpointInfo.vstsBaseUri}/_apis/wit/workitems?ids=${idsCappedJoined}&fields=${fields}`)
-        .then(response => {
-            // The response is {count, value} where value is the array of VSO items.
-            _.each(response.value, workItemFields => {
-                // TODO: Check if this is async or sync, we can't resolve
-                // the promise below until this is done.
-                results[workItemFields.id] = {
-                    fields: workItemFields.fields,
-                    state: {  // Will be used later
-                        rollupInfo: {},
-                        isProcessed: false,
-                        isUpdateRequired: false
-                    }
-                }
-            });
-            deferred.resolve();
-        })
-        .catch(error => {
-            deferred.reject();
-        });
-    });
-    
-    q.all(resultPromises)
-    .then(x => deferred.resolve(results))
-    .catch(error => deferred.reject(error));
-
-    return deferred.promise;
-}
-
-// method: GET, POST, PATCH, etc
-// uri: The HTTP endpoint
-// body: Optional body parameter
-function vstsApi(method, uri, body) {
-    const options = {
-        method: method,
-        headers: { 'cache-control': 'no-cache', 'authorization': `Basic ${encodedPat}` },
-        uri: uri,
-        qs: { 'api-version': '1.0' },
-        body: body,
-        json: method == 'PATCH' ? false : true
-    };
-
-    return request(options)
-    .catch(error => {
-        console.log(`vstsApi error: method:${method}, uri:${uri}, body:${body}`);
-        throw error;
-    });
-}
-
-function encodePat(pat) {
-    const b = new Buffer(':' + pat);
-    return b.toString('base64');
 }
 
 function showHelp() {
@@ -327,6 +265,10 @@ function showHelp() {
     console.log('');
 }
 
+// Processes command line.
+// Returns an object with various command line options set so that
+// the rest of the code can use that to check various commandline controls.
+// Returns null if there is an error in what the user has selected.
 function processCommandline() {
     const options = [
         { name: 'forcecap', alias: 'f', type: Number },
@@ -340,7 +282,7 @@ function processCommandline() {
     if (args.help) {
         return args;
     }
-    
+
     if (args.forcecap) {
         console.log(`Capping updates to max of ${args.forcecap}.`);
     }

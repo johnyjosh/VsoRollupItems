@@ -5,9 +5,9 @@
   },
   "constants": {
     "fieldsToRollup": ["Microsoft.VSTS.Scheduling.RemainingWork", "Microsoft.VSTS.Scheduling.OriginalEstimate"],
-    "maxIdsInSingleCall": 200,
     "batchSize": 50,
     "maxUpdates": 100,
-    "areaPath": "MSTeams\\Web Client\\Meetings\\Broadcast"
+    "areaPath": "MSTeams\\Web Client\\Meetings\\Broadcast",
+    "iterationPath": "MSTeams\\2018\\Q3"
   }
 }
