@@ -14,7 +14,7 @@ npm install
 3. Create a config\personal_access_token.json file with {"token":"Your PAT"}. Refer [here](https://docs.microsoft.com/en-us/vsts/accounts/use-personal-access-tokens-to-authenticate) for how to do that in VSO.
 4. Update config\default.json with your VSO information, namely the area path you want to run this on.
 
-5. Run one of the two tools. Run with -h for help on the tool. Note that it is safe to execute them without any options since by default no vso updates will be made.
+5. Run one of the two tools. Run with -h for help on the tool. It is safe to execute them without any options since by default no vso updates will be made.
 ```
 node rollupcosts.js
 ```
