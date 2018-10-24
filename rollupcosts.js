@@ -52,7 +52,7 @@ function executeCostRollup() {
                 Source.[System.WorkItemType] in ('Epic', 'Feature') and \
                 Source.[System.AreaPath] = '${vstsConstants.areaPath}' and \
                 Target.[System.AreaPath] = '${vstsConstants.areaPath}' and \
-                Target.[System.WorkItemType] in ('Feature', 'Requirement', 'Task', 'Bug') \
+                Target.[System.WorkItemType] in ('Feature', 'Requirement', 'Task') \
                 MODE (Recursive)`
         })
     .then(queryResults => {
