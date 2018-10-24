@@ -8,6 +8,6 @@
     "batchSize": 50,
     "maxUpdates": 100,
     "areaPath": "MSTeams\\Web Client\\Meetings\\Broadcast",
-    "iterationPath": "MSTeams\\2018\\Q3"
+    "iterationPath": "MSTeams\\2018\\Q4"
   }
 }
