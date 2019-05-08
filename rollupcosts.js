@@ -49,7 +49,7 @@ function executeCostRollup() {
             query: `SELECT [System.Id] \
             FROM WorkItemLinks \
             WHERE [System.Links.LinkType] = 'System.LinkTypes.Hierarchy-Forward' and \
-                Source.[System.WorkItemType] in ('Epic', 'Feature') and \
+                Source.[System.WorkItemType] in ('Feature') and \
                 Source.[System.AreaPath] = '${vstsConstants.areaPath}' and \
                 Target.[System.AreaPath] = '${vstsConstants.areaPath}' and \
                 Target.[System.WorkItemType] in ('Feature', 'Requirement', 'Task') \

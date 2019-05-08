@@ -7,7 +7,7 @@
     "fieldsToRollup": ["Microsoft.VSTS.Scheduling.RemainingWork", "Microsoft.VSTS.Scheduling.OriginalEstimate"],
     "batchSize": 50,
     "maxUpdates": 100,
-    "areaPath": "MSTeams\\Web Client\\Meetings\\Broadcast",
-    "iterationPath": "MSTeams\\2018\\Q4"
+    "areaPath": "MSTeams\\Calling Meeting Devices (CMD)\\Broadcast",
+    "iterationPath": "MSTeams\\2019\\Q2"
   }
 }
