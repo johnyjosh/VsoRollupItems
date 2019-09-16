@@ -30,6 +30,11 @@ if (args.help) {
     return;
 }
 
+if (!args.areapath && !args.queryid) {
+    showHelp("One of areapath or queryid needs to be passed in.");
+    return;
+}
+
 const vstsConstants = config.get('constants');
 const vstsEndpointInfo = config.get('endpointInfo');
 var vsoConfig = new utils.VsoConfig(vstsEndpointInfo.vstsBaseUri, vstsEndpointInfo.vstsProject, pat.token);
@@ -37,34 +42,50 @@ executeCostRollup();
 return;
 
 function executeCostRollup() {
-    // 1. Execute the query to retrieve the hierarchy of work items in the given area path.
-    // Note that we can't plug in any arbitrary query the code logic assumes that the query is from WorkItemLinks rather than from WorkItems.
-    // The other option would have been to start from all the top level items (Epics)
-    // and then query for children recursively and do the roll ups per top level item.
-    utils.vstsApi(
-        vsoConfig,
-        'POST',
-        `${vstsEndpointInfo.vstsBaseUri}/${vstsEndpointInfo.vstsProject}/_apis/wit/wiql`,
-        {
-            query: `SELECT [System.Id] \
-            FROM WorkItemLinks \
-            WHERE [System.Links.LinkType] = 'System.LinkTypes.Hierarchy-Forward' and \
-                Source.[System.WorkItemType] in ('Feature') and \
-                Source.[System.AreaPath] = '${vstsConstants.areaPath}' and \
-                Target.[System.AreaPath] = '${vstsConstants.areaPath}' and \
-                Target.[System.WorkItemType] in ('Feature', 'Requirement', 'Task') \
-                MODE (Recursive)`
-        })
-    .then(queryResults => {
+    // If user specifies a query (has to be a parent-child query), then we will use that.
+    // User can also just pass an area path in which case the program will execute a pre-canned query
+    // and rollup costs in requirements and tasks into features.
+
+
+    // 1. Execute the query to retrieve the hierarchy of work items.
+    // Note that we can't plug in any arbitrary query the code logic assumes that the query is from
+    // WorkItemLinks rather than from WorkItems. So the query has to be a heirarchical one.
+    var queryResultsPromise;
+    if (args.areapath) {
+        console.log(`Processing features, requirements and tasks from ${args.areapath}`);
+        queryResultsPromise = utils.vstsApi(
+            vsoConfig,
+            'POST',
+            `${vstsEndpointInfo.vstsBaseUri}/${vstsEndpointInfo.vstsProject}/_apis/wit/wiql`,
+            {
+                query: `SELECT [System.Id] \
+                FROM WorkItemLinks \
+                WHERE [System.Links.LinkType] = 'System.LinkTypes.Hierarchy-Forward' and \
+                    Source.[System.WorkItemType] in ('Feature') and \
+                    Source.[System.AreaPath] = '${args.areapath}' and \
+                    Target.[System.AreaPath] = '${args.areapath}' and \
+                    Target.[System.WorkItemType] in ('Feature', 'Requirement', 'Task') \
+                    MODE (Recursive)`
+            })
+    } else {
+        console.log(`Processing vso items from queryid ${args.queryid}`);
+        queryResultsPromise = utils.vstsApi(
+            vsoConfig,
+            'GET',
+            `${vstsEndpointInfo.vstsBaseUri}/${vstsEndpointInfo.vstsProject}/_apis/wit/wiql/${args.queryid}`
+        )
+    }
+    queryResultsPromise.then(queryResults => {
         // 2. Restructure the hierarchy info into a more convenient format that brings all
         //    the child items into one array.
         var workItemsHierarchy = {};
+        console.log(`Processing ${queryResults.workItemRelations.length} items`);
         _.each(queryResults.workItemRelations, elm => {
             if (elm.rel == 'System.LinkTypes.Hierarchy-Forward') {
                 // Hierarchy-Forward represents the parent-child relationship with source
                 // being the parent and target being the children. Note that work items
-                // with no no parents have a null source but it is safe to access source.id
-                // because we of the elm.rel == Hierarchy-Forward check.
+                // with no parents have a null source but it is safe to access source.id
+                // because of the elm.rel == Hierarchy-Forward check.
                 workItemsHierarchy[elm.source.id] = workItemsHierarchy[elm.source.id] || [];
                 workItemsHierarchy[elm.source.id].push(elm.target.id);
             }
@@ -244,9 +265,19 @@ function rollupCostsForItem(vsoItems, itemId) {
     workItemFields.state.isUpdateRequired = evaluateUpdateRequired(workItemFields);
 }
 
-function showHelp() {
+function showHelp(helpString) {
+    if (helpString) {
+        console.log(helpString);
+        return;
+    }
     console.log(`--help (or -h)`);
     console.log(`   Show this help.`);
+    console.log('');
+    console.log(`--areapath (or -p)`);
+    console.log(`   Rollup costs from tasks and requirements into features for the given areapath (for example: MSTeams\\Calling Meeting Devices (CMD)\\Broadcast).`);
+    console.log('');
+    console.log(`--queryid (or -q)`);
+    console.log(`   Rollup costs for the work items returned from the given query.`);
     console.log('');
     console.log(`--safe (or -n)`);
     console.log(`   Do the rollup calculations, but don't actually commit to VSO. This is the default behavior if --apply is not explicitly specified.`);
@@ -271,6 +302,8 @@ function showHelp() {
 // Returns null if there is an error in what the user has selected.
 function processCommandline() {
     const options = [
+        { name: 'areapath', alias: 'p', type: String },
+        { name: 'queryid', alias: 'q', type: String },
         { name: 'forcecap', alias: 'f', type: Number },
         { name: 'verbose', alias: 'v', type: Boolean },
         { name: 'safe', alias: 'n', type: Boolean},

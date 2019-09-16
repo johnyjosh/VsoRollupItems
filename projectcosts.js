@@ -21,6 +21,11 @@ if (args.help) {
     return;
 }
 
+if (!args.areapath || !args.iterationpath) {
+    showHelp("Both areapath and iterationpath are required parameters.");
+    return;
+}
+
 // 1. Execute the query to retrieve the hierarchy of work items in the given area path.
 // Note that we can't plug in any arbitrary query the code logic assumes that the query is from WorkItemLinks rather than from WorkItems.
 // The other option would have been to start from all the top level items (Epics)
@@ -38,8 +43,8 @@ utils.vstsApi(
         query: `SELECT [System.Id]\
         FROM WorkItems \
         WHERE [System.WorkItemType] in ('Feature') and \
-            [System.AreaPath] = '${vstsConstants.areaPath}' and \
-            [System.IterationPath] = '${vstsConstants.iterationPath}'\
+            [System.AreaPath] = '${args.areapath}' and \
+            [System.IterationPath] = '${args.iterationpath}'\
         ORDER BY [Microsoft.VSTS.Common.StackRank] ASC`
     }
 )
@@ -69,9 +74,20 @@ utils.vstsApi(
     });
 })
 
-function showHelp() {
+function showHelp(helpString) {
+    if (helpString) {
+        console.log(helpString);
+        return;
+    }
+
     console.log(`--help (or -h)`);
     console.log(`   Show this help.`);
+    console.log('');
+    console.log(`--areapath (or -p) [Required parameter]`);
+    console.log(`   Provide the area path to process (for example: MSTeams\\Calling Meeting Devices (CMD)\\Broadcast).`);
+    console.log('');
+    console.log(`--iterationpath (or -i) [Required parameter]`);
+    console.log(`   Provide the specific iteration to list out (for example: MSTeams\\2019\\Q2).`);
     console.log('');
     console.log('The program lists out the feature items in the given iteration path in the order of stackrank');
     console.log('and with a column reflecting the cummulation of costs for all items above (including current item).');
@@ -80,7 +96,9 @@ function showHelp() {
 
 function processCommandline() {
     const options = [
-        { name: 'help', alias: 'h', type: Boolean}
+        { name: 'help', alias: 'h', type: Boolean},
+        { name: 'areapath', alias: 'p', type: String },
+        { name: 'iterationpath', alias: 'i', type: String }
     ];
     const args = cmdargs(options);
 
