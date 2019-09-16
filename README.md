@@ -1,6 +1,6 @@
  VsoRollupItems
 
-Use the VSTS REST APIs to automatically do the cost roll-ups for a given backlog and to evaluate cumulative costs and project completion times based on team capacity.
+Use the VSTS REST APIs to automatically do the cost roll-ups for a given backlog or VSO hierarchical query. There is a second tool that helps evaluate cumulative costs to make it easier to evaluate cut lines based on team capacity.
 
 Initial setup to use the tool:
 1. Clone the repo. The following command will create a VsoRollupItems folder in the current working directory.
