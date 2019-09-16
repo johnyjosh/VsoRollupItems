@@ -16,10 +16,10 @@ npm install
 
 5. Run one of the two tools. Run with -h for help on the tool. It is safe to execute them without any options since by default no vso updates will be made.
 ```
-node rollupcosts.js
+node rollupcosts.js -h
 ```
 ```
-node projectcosts.js
+node projectcosts.js -h
 ```
 
 *Please note the following caveats:
