@@ -64,7 +64,7 @@ function executeCostRollup() {
                     Source.[System.WorkItemType] in ('Feature') and \
                     Source.[System.AreaPath] = '${args.areapath}' and \
                     Target.[System.AreaPath] = '${args.areapath}' and \
-                    Target.[System.WorkItemType] in ('Feature', 'Requirement', 'Task') \
+                    Target.[System.WorkItemType] in ('Feature', 'Requirement', 'Task', 'bug') \
                     MODE (Recursive)`
             })
     } else {
