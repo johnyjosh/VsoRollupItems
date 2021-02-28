@@ -30,8 +30,8 @@ if (args.help) {
     return;
 }
 
-if (!args.areapath && !args.queryid) {
-    showHelp("One of areapath or queryid needs to be passed in.");
+if (!args.backlog && !args.queryid) {
+    showHelp("One of backlog or queryid needs to be passed in.");
     return;
 }
 
@@ -51,29 +51,43 @@ function executeCostRollup() {
     // Note that we can't plug in any arbitrary query the code logic assumes that the query is from
     // WorkItemLinks rather than from WorkItems. So the query has to be a heirarchical one.
     var queryResultsPromise;
-    if (args.areapath) {
+    if (args.backlog) {
+        const areaPaths = utils.getAdoListFromArray(config.get('backlogs')[args.backlog]);
+        if (!areaPaths) {
+            console.error(`'${args.backlog}' not found in config or not setup.`)
+        }
         console.log(`Processing features, requirements and tasks from ${args.areapath}`);
+        var queryString =
+            `SELECT [System.Id] \
+                FROM WorkItemLinks \
+                WHERE [System.Links.LinkType] = 'System.LinkTypes.Hierarchy-Forward' \
+                    and Source.[System.WorkItemType] in ('Feature') \
+                    and Source.[System.AreaPath] in ${areaPaths} \
+                    and Target.[System.AreaPath] in ${areaPaths} \
+                    and Target.[System.WorkItemType] in ('Feature', 'Requirement', 'Task', 'bug')`;
+
+        if (args.iterationpath) {
+            queryString += `and Source.[System.IterationPath] = '${args.iterationpath}'`;
+        }
+
+        queryString += `MODE (Recursive)`;
+
         queryResultsPromise = utils.vstsApi(
             vsoConfig,
             'POST',
             `${vstsEndpointInfo.vstsBaseUri}/${vstsEndpointInfo.vstsProject}/_apis/wit/wiql`,
             {
-                query: `SELECT [System.Id] \
-                FROM WorkItemLinks \
-                WHERE [System.Links.LinkType] = 'System.LinkTypes.Hierarchy-Forward' and \
-                    Source.[System.WorkItemType] in ('Feature') and \
-                    Source.[System.AreaPath] = '${args.areapath}' and \
-                    Target.[System.AreaPath] = '${args.areapath}' and \
-                    Target.[System.WorkItemType] in ('Feature', 'Requirement', 'Task', 'bug') \
-                    MODE (Recursive)`
+                query: queryString
             })
-    } else {
+    } else if (args.queryid) {
         console.log(`Processing vso items from queryid ${args.queryid}`);
         queryResultsPromise = utils.vstsApi(
             vsoConfig,
             'GET',
             `${vstsEndpointInfo.vstsBaseUri}/${vstsEndpointInfo.vstsProject}/_apis/wit/wiql/${args.queryid}`
         )
+    } else { // redundant check since we already validate this in the caller, but keeping for clarity of logic.
+        console.error("Invalid arguments, need either backlog or queryid specified");
     }
     queryResultsPromise.then(queryResults => {
         // 2. Restructure the hierarchy info into a more convenient format that brings all
@@ -273,8 +287,11 @@ function showHelp(helpString) {
     console.log(`--help (or -h)`);
     console.log(`   Show this help.`);
     console.log('');
-    console.log(`--areapath (or -p)`);
-    console.log(`   Rollup costs from tasks and requirements into features for the given areapath (for example: MSTeams\\Calling Meeting Devices (CMD)\\Broadcast).`);
+    console.log(`--backlog (or -b) <broadcast | transcript> [Required parameter]`);
+    console.log(`   Rollup costs from tasks and requirements into features for the given backlog. The backlog name need to be registered in the config.`);
+    console.log('');
+    console.log(`--iterationpath (or -i) <iterationpath>`);
+    console.log(`   Optional parameter to apply the rollup only to a specific iteration like MSTeams\\2021\\Q1`);    
     console.log('');
     console.log(`--queryid (or -q)`);
     console.log(`   Rollup costs for the work items returned from the given query.`);
@@ -302,7 +319,8 @@ function showHelp(helpString) {
 // Returns null if there is an error in what the user has selected.
 function processCommandline() {
     const options = [
-        { name: 'areapath', alias: 'p', type: String },
+        { name: 'backlog', alias: 'b', type: String },
+        { name: 'iterationpath', alias: 'i', type: String },
         { name: 'queryid', alias: 'q', type: String },
         { name: 'forcecap', alias: 'f', type: Number },
         { name: 'verbose', alias: 'v', type: Boolean },

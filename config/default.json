@@ -7,5 +7,10 @@
     "fieldsToRollup": ["Microsoft.VSTS.Scheduling.RemainingWork", "Microsoft.VSTS.Scheduling.OriginalEstimate"],
     "batchSize": 50,
     "maxUpdates": 100
+  },
+
+  "backlogs": {
+    "broadcast" : ["MSTeams\\Calling Meeting Devices (CMD)\\Broadcast", "MSTeams\\Calling Meeting Devices (CMD)\\Meetings\\Webinars"],
+    "transcript" : ["MSTeams\\Calling Meeting Devices (CMD)\\Meetings\\Intelligence\\Transcript", "'MSTeams\\Calling Meeting Devices (CMD)\\Meetings\\Intelligence\\Live Captions"]
   }
 }

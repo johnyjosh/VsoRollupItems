@@ -4,7 +4,7 @@ const q = require('q');
 const _ = require('lodash');
 
 function encodePat(pat) {
-  const b = new Buffer(':' + pat);
+  const b = Buffer.from(':' + pat);
   return b.toString('base64');
 }
 
@@ -91,5 +91,14 @@ module.exports = {
     .catch(error => deferred.reject(error));
 
     return deferred.promise;
+  },
+
+  // ADO requires a list to be in the form of ('a','b','c').
+  // This routine converts a JSON array of strings [a,b,c] into the above format.
+  getAdoListFromArray: function(inputArray) {
+    if (!inputArray || inputArray.length < 1) {
+      return null;
+    }
+    return "(" + inputArray.map(x => `'${x}'`).join(",") + ")"
   }
 }
