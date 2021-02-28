@@ -15,11 +15,6 @@ const cmdargs = require('command-line-args'); // https://www.npmjs.com/package/c
 const config = require('config');
 const utils = require('./utils');
 
-// Access the personal access token and other sensitive info from a local file you need to create
-// Info on how to create PAT token: https://docs.microsoft.com/en-us/vsts/accounts/use-personal-access-tokens-to-authenticate
-const configInfoFile = path.dirname(require.main.filename) + '\\config\\donotcheckin.json';
-const configInfo = JSON.parse(fs.readFileSync(configInfoFile));
-
 const args = processCommandline();
 if (!args) {
     return; // Return on error
@@ -30,18 +25,26 @@ if (args.help) {
     return;
 }
 
-if (!args.backlog && !args.queryid) {
-    showHelp("One of backlog or queryid needs to be passed in.");
+if (!args.config || !args.iterationpath) {
+    showHelp("Both config and iterationpath are required parameters.");
     return;
 }
+const configInfo = JSON.parse(fs.readFileSync(args.config));
 
-const vstsConstants = config.get('constants');
-const vstsEndpointInfo = configInfo.endpointInfo;
-var vsoConfig = new utils.VsoConfig(vstsEndpointInfo.vstsBaseUri, vstsEndpointInfo.vstsProject, configInfo.token);
-executeCostRollup();
+// Access the personal access token and other sensitive info from a local file that isn't checked in.
+// The file needs to be in the program's config directory and the name is in default.json in the "securityInfoSettingsFile" property.
+// Info on how to create PAT token: https://docs.microsoft.com/en-us/vsts/accounts/use-personal-access-tokens-to-authenticate
+const securityInfoFile = path.dirname(require.main.filename) + '\\config\\' + config.get('securityInfoSettingsFile');
+const securityInfo = JSON.parse(fs.readFileSync(securityInfoFile));
+
+const vstsEndpointInfo = securityInfo.endpointInfo;
+var vsoConfig = new utils.VsoConfig(vstsEndpointInfo.vstsBaseUri, vstsEndpointInfo.vstsProject, securityInfo.adoPersonalAccesstoken);
+const fieldsToRollup = config.get('fieldsToRollup');
+
+executeCostRollup(vsoConfig);
 return;
 
-function executeCostRollup() {
+function executeCostRollup(vsoConfig) {
     // If user specifies a query (has to be a parent-child query), then we will use that.
     // User can also just pass an area path in which case the program will execute a pre-canned query
     // and rollup costs in requirements and tasks into features.
@@ -51,19 +54,22 @@ function executeCostRollup() {
     // Note that we can't plug in any arbitrary query the code logic assumes that the query is from
     // WorkItemLinks rather than from WorkItems. So the query has to be a heirarchical one.
     var queryResultsPromise;
-    if (args.backlog) {
-        if (configInfo.backlogs === undefined || configInfo.backlogs[args.backlog] === undefined) {
-            console.error(`Please configure backlog information into ${configInfoFile} for "${args.backlog}"`);
-            throw error;
-        }
 
-        const areaPaths = utils.getAdoListFromArray(configInfo.backlogs[args.backlog].areaPaths);
+    if (args.queryid) {
+        console.log(`Processing vso items from queryid ${args.queryid}`);
+        queryResultsPromise = utils.vstsApi(
+            vsoConfig,
+            'GET',
+            `${vstsEndpointInfo.vstsBaseUri}/${vstsEndpointInfo.vstsProject}/_apis/wit/wiql/${args.queryid}`
+        )
+    } else if (configInfo) {
+        const areaPaths = utils.getAdoListFromArray(configInfo.areaPaths);
         if (!areaPaths) {
-            console.error(`areaPaths not setup correctly for '${args.backlog}'`)
+            console.error(`areaPaths not setup correctly in  '${args.config}'`)
             throw error;
         }
 
-        console.log(`Processing features, requirements and tasks from ${args.areapath}`);
+        console.log(`Processing features, requirements and tasks from ${areaPaths}`);
         var queryString =
             `SELECT [System.Id] \
                 FROM WorkItemLinks \
@@ -77,8 +83,8 @@ function executeCostRollup() {
             queryString += `and Source.[System.IterationPath] = '${args.iterationpath}'`;
         }
 
-        if (configInfo.skipFilter) {
-            queryString += configInfo.skipFilter;
+        if (configInfo.queryExtensionForRollup) {
+            queryString += configInfo.queryExtensionForRollup;
         }
 
         queryString += `MODE (Recursive)`;
@@ -90,13 +96,6 @@ function executeCostRollup() {
             {
                 query: queryString
             })
-    } else if (args.queryid) {
-        console.log(`Processing vso items from queryid ${args.queryid}`);
-        queryResultsPromise = utils.vstsApi(
-            vsoConfig,
-            'GET',
-            `${vstsEndpointInfo.vstsBaseUri}/${vstsEndpointInfo.vstsProject}/_apis/wit/wiql/${args.queryid}`
-        )
     } else { // redundant check since we already validate this in the caller, but keeping for clarity of logic.
         console.error("Invalid arguments, need either backlog or queryid specified");
     }
@@ -120,7 +119,7 @@ function executeCostRollup() {
         return utils.getWorkItemFields(
             vsoConfig,
             _.map(queryResults.workItemRelations, x => x.target.id),
-            'System.Id,System.Title,System.WorkItemType,System.State,' + _.join(vstsConstants.fieldsToRollup))
+            'System.Id,System.Title,System.WorkItemType,System.State,' + _.join(fieldsToRollup))
         .then(workItemsWithFields => {
             // We create a wrapper object vsoitems that has two objects:
             // workItemsHierarchy and workItemsWithFields
@@ -169,11 +168,11 @@ function executeCostRollup() {
 }
 
 function printUpdatePlan(vsoItems) {
-    const shortenedFieldNames = _.map(vstsConstants.fieldsToRollup, fieldName => _.replace(fieldName, "Microsoft.VSTS.Scheduling.", ""));
+    const shortenedFieldNames = _.map(fieldsToRollup, fieldName => _.replace(fieldName, "Microsoft.VSTS.Scheduling.", ""));
     console.log("id\t" + _.join(shortenedFieldNames, "(Old)\t") + "(Old)\t" + _.join(shortenedFieldNames, "(New)\t") + "(New)\t" + "isUpdateRequired\tworkItemType\tState\tTitle");
     _.each(vsoItems.workItemsWithFields, (workItemFields, id) => {
         var fieldValuesOld = "", fieldvaluesNew = "";
-        _.each(vstsConstants.fieldsToRollup, fieldName => {
+        _.each(fieldsToRollup, fieldName => {
             fieldValuesOld += workItemFields.fields[fieldName] + "\t";
             fieldvaluesNew += workItemFields.state.rollupInfo[fieldName] + "\t";
         });
@@ -188,7 +187,7 @@ function printUpdatePlan(vsoItems) {
 function evaluateUpdateRequired(workItemFields) {
     var netSum = 0;
 
-    var isSomeValueUpdated = _.some(vstsConstants.fieldsToRollup, fieldName => {
+    var isSomeValueUpdated = _.some(fieldsToRollup, fieldName => {
         var rollupValue = workItemFields.state.rollupInfo[fieldName];
         var currentValue = workItemFields.fields[fieldName] || 0;
         netSum += rollupValue + currentValue;
@@ -210,7 +209,7 @@ function updateCosts(vsoItems) {
         console.error(`Warning: ${filteredIds.length} updates computed, capping to ${cappedIds.length}`);
     }
 
-    const chunkedIds = _.chunk(cappedIds, vstsConstants.batchSize);
+    const chunkedIds = _.chunk(cappedIds, config.get('batchSize'));
 
     var deferred = q.defer();
     if (chunkedIds.length == 0) {
@@ -231,7 +230,7 @@ function updateCosts(vsoItems) {
             }
 
             // list of operations (one per rollup field)
-            patchOp.body = _.map(vstsConstants.fieldsToRollup, fieldName => {
+            patchOp.body = _.map(fieldsToRollup, fieldName => {
                 return {
                     "op" : "replace",
                     "path" : `/fields/${fieldName}`,
@@ -273,16 +272,19 @@ function rollupCostsForItem(vsoItems, itemId) {
     const hierarchyInfo = vsoItems.workItemsHierarchy[itemId];
     if (hierarchyInfo == undefined) {
         // For leaf nodes, we just copy the item's costs into the state.rollupInfo structure.
-        _.each(vstsConstants.fieldsToRollup, fieldName => workItemFields.state.rollupInfo[fieldName] = workItemFields.fields[fieldName] || 0);
+        _.each(fieldsToRollup, fieldName => workItemFields.state.rollupInfo[fieldName] = workItemFields.fields[fieldName] || 0);
     } else {
-        _.each(vstsConstants.fieldsToRollup, fieldName => workItemFields.state.rollupInfo[fieldName] = 0);
+        _.each(fieldsToRollup, fieldName => workItemFields.state.rollupInfo[fieldName] = 0);
 
         // Go through each child, ensure that the child is processed, then add up that child's
         // cost info into the aggregate. We ensure that even leaf node item costs are copied into
         // the "rollupInfo" structure.
         _.each(hierarchyInfo, childId => {
             rollupCostsForItem(vsoItems, childId);
-            _.each(vstsConstants.fieldsToRollup, fieldName => workItemFields.state.rollupInfo[fieldName] += vsoItems.workItemsWithFields[childId].state.rollupInfo[fieldName]);
+            _.each(fieldsToRollup, fieldName => {
+                workItemFields.state.rollupInfo[fieldName] += vsoItems.workItemsWithFields[childId].state.rollupInfo[fieldName]
+                workItemFields.state.rollupInfo[fieldName] = Math.round(workItemFields.state.rollupInfo[fieldName] * 100)/100;
+            });
         });
     }
 
@@ -298,11 +300,11 @@ function showHelp(helpString) {
     console.log(`--help (or -h)`);
     console.log(`   Show this help.`);
     console.log('');
-    console.log(`--backlog (or -b) <broadcast | transcript> [Required parameter]`);
-    console.log(`   Rollup costs from tasks and requirements into features for the given backlog. The backlog name need to be registered in the config.`);
-    console.log('');
     console.log(`--iterationpath (or -i) <iterationpath>`);
     console.log(`   Optional parameter to apply the rollup only to a specific iteration like MSTeams\\2021\\Q1`);    
+    console.log('');
+    console.log(`--config (or -c) <file>`); // Either this or queryId must be specified
+    console.log(`   Pass the config file with info on which backlog to process.`);
     console.log('');
     console.log(`--queryid (or -q)`);
     console.log(`   Rollup costs for the work items returned from the given query.`);
@@ -330,7 +332,7 @@ function showHelp(helpString) {
 // Returns null if there is an error in what the user has selected.
 function processCommandline() {
     const options = [
-        { name: 'backlog', alias: 'b', type: String },
+        { name: 'config', alias: 'c', type: String },
         { name: 'iterationpath', alias: 'i', type: String },
         { name: 'queryid', alias: 'q', type: String },
         { name: 'forcecap', alias: 'f', type: Number },

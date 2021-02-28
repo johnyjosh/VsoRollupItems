@@ -9,13 +9,6 @@ const fs = require('fs');
 const cmdargs = require('command-line-args'); // https://www.npmjs.com/package/command-line-args
 const config = require('config');
 const utils = require('./utils');
-const { cpuUsage } = require('process');
-const { update } = require('lodash');
-
-// Access the personal access token and other sensitive info from a local file you need to create
-// Info on how to create PAT token: https://docs.microsoft.com/en-us/vsts/accounts/use-personal-access-tokens-to-authenticate
-const configInfoFile = path.dirname(require.main.filename) + '\\config\\donotcheckin.json';
-const configInfo = JSON.parse(fs.readFileSync(configInfoFile));
 
 const args = processCommandline();
 if (args.help) {
@@ -23,33 +16,29 @@ if (args.help) {
     return;
 }
 
-if (!args.backlog || !args.iterationpath) {
-    showHelp("Both backlog and iterationpath are required parameters.");
+if (!args.config || !args.iterationpath) {
+    showHelp("Both config and iterationpath are required parameters.");
     return;
 }
+const configInfo = JSON.parse(fs.readFileSync(args.config));
 
-// 1. Execute the query to retrieve the hierarchy of work items in the given area path.
-// Note that we can't plug in any arbitrary query the code logic assumes that the query is from WorkItemLinks rather than from WorkItems.
-// The other option would have been to start from all the top level items (Epics)
-// and then query for children recursively and do the roll ups per top level item.
+// Access the personal access token and other sensitive info from a local file that isn't checked in.
+// The file needs to be in the program's config directory and the name is in default.json in the "securityInfoSettingsFile" property.
+// Info on how to create PAT token: https://docs.microsoft.com/en-us/vsts/accounts/use-personal-access-tokens-to-authenticate
+const securityInfoFile = path.dirname(require.main.filename) + '\\config\\' + config.get('securityInfoSettingsFile');
+const securityInfo = JSON.parse(fs.readFileSync(securityInfoFile));
 
-const vstsConstants = config.get('constants');
-const vstsEndpointInfo = configInfo.endpointInfo;
-var vsoConfig = new utils.VsoConfig(vstsEndpointInfo.vstsBaseUri, vstsEndpointInfo.vstsProject, configInfo.token);
+const vstsEndpointInfo = securityInfo.endpointInfo;
+var vsoConfig = new utils.VsoConfig(vstsEndpointInfo.vstsBaseUri, vstsEndpointInfo.vstsProject, securityInfo.adoPersonalAccesstoken);
 
-if (configInfo.backlogs === undefined || configInfo.backlogs[args.backlog] === undefined) {
-    console.error(`Please configure backlog information into ${configInfoFile} for "${args.backlog}"`);
-    throw error;
-}
-
-const capacity = configInfo.backlogs[args.backlog].capacity;
+const capacity = configInfo.capacity;
 if (!capacity) {
-    console.warn(`Capacity not setup for '${args.backlog}'`); 
+    console.warn(`Need capacity property from ${args.config} for cut line calculation.`); 
 }
 
-const areaPaths = utils.getAdoListFromArray(configInfo.backlogs[args.backlog].areaPaths);
+const areaPaths = utils.getAdoListFromArray(configInfo.areaPaths);
 if (!areaPaths) {
-    console.error(`areaPaths not setup correctly for '${args.backlog}'`)
+    console.error(`areaPaths not setup correctly in  '${args.config}'`)
     throw error;
 }
 
@@ -57,11 +46,10 @@ var queryString = `SELECT [System.Id]\
     FROM WorkItems \
     WHERE [System.WorkItemType] in ('Feature') \
         and [System.AreaPath] in ${areaPaths} \
-        and [System.IterationPath] = '${args.iterationpath}'\
-        and [System.Tags] NOT CONTAINS 'skip'`;
+        and [System.IterationPath] = '${args.iterationpath}'`;
 
-if (configInfo.skipFilter) {
-    queryString += configInfo.skipFilter;
+if (configInfo.queryExtensionForProjection) {
+    queryString += configInfo.queryExtensionForProjection;
 }
 
 queryString += `ORDER BY [Microsoft.VSTS.Common.StackRank] ASC`;
@@ -76,7 +64,7 @@ utils.vstsApi(
 )
 .then(queryResults => {
   const fieldNames = 'System.Id,System.Title,Microsoft.VSTS.Scheduling.RemainingWork,Microsoft.VSTS.Scheduling.CompletedWork,\
-System.IterationPath,System.State,Custom.CommittedTargettedCut,Custom.ReleaseType,\
+System.IterationPath,System.State,Custom.CommittedTargettedCut,Custom.ReleaseType,System.Tags,\
 Custom.InvestmentArea,Microsoft.VSTS.Common.StackRank';
 
    // 2. Query for additional fields for each of the work items
@@ -117,6 +105,13 @@ Custom.InvestmentArea,Microsoft.VSTS.Common.StackRank';
 
       console.log(`${workItemDetails['System.Id']}\t${remainingDaysCumulative}\t${remainingDays}\
         \t${workItemDetails['System.Title']}`);
+
+      var tags = workItemDetails['System.Tags'];
+      if (tags && tags.search(configInfo.filterSeparatorTag) >= 0) {
+          // This is so we can skip over the separators.
+          // Wanted to see the separators in the list but not have it count in the stats calculations below
+          return;
+      }
 
       const committedKey = workItemDetails['Custom.CommittedTargettedCut'] || '<empty>';
       const releaseTypeKey = workItemDetails['Custom.ReleaseType'] || '<empty>';
@@ -190,8 +185,8 @@ function showHelp(helpString) {
     console.log(`--help (or -h)`);
     console.log(`   Show this help.`);
     console.log('');
-    console.log(`--backlog (or -b) <broadcast | transcript> [Required parameter]`);
-    console.log(`   Pass the backlog to process. The backlog name need to be registered in the config.`);
+    console.log(`--config (or -c) <file> [Required parameter]`);
+    console.log(`   Pass the config file with info on which backlog to process.`);
     console.log('');
     console.log(`--iterationpath (or -i) [Required parameter]`);
     console.log(`   Provide the specific iteration to list out (for example: MSTeams\\2019\\Q2).`);
@@ -204,7 +199,7 @@ function showHelp(helpString) {
 function processCommandline() {
     const options = [
         { name: 'help', alias: 'h', type: Boolean},
-        { name: 'backlog', alias: 'b', type: String },
+        { name: 'config', alias: 'c', type: String },
         { name: 'iterationpath', alias: 'i', type: String }
     ];
     const args = cmdargs(options);
