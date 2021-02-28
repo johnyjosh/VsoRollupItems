@@ -15,10 +15,10 @@ const cmdargs = require('command-line-args'); // https://www.npmjs.com/package/c
 const config = require('config');
 const utils = require('./utils');
 
-// Access the personal access token from a local file you need to create
+// Access the personal access token and other sensitive info from a local file you need to create
 // Info on how to create PAT token: https://docs.microsoft.com/en-us/vsts/accounts/use-personal-access-tokens-to-authenticate
-const patFile = path.dirname(require.main.filename) + '\\config\\personal_access_token.json';
-const pat = JSON.parse(fs.readFileSync(patFile));
+const configInfoFile = path.dirname(require.main.filename) + '\\config\\donotcheckin.json';
+const configInfo = JSON.parse(fs.readFileSync(configInfoFile));
 
 const args = processCommandline();
 if (!args) {
@@ -36,8 +36,8 @@ if (!args.backlog && !args.queryid) {
 }
 
 const vstsConstants = config.get('constants');
-const vstsEndpointInfo = config.get('endpointInfo');
-var vsoConfig = new utils.VsoConfig(vstsEndpointInfo.vstsBaseUri, vstsEndpointInfo.vstsProject, pat.token);
+const vstsEndpointInfo = configInfo.endpointInfo;
+var vsoConfig = new utils.VsoConfig(vstsEndpointInfo.vstsBaseUri, vstsEndpointInfo.vstsProject, configInfo.token);
 executeCostRollup();
 return;
 
@@ -52,10 +52,17 @@ function executeCostRollup() {
     // WorkItemLinks rather than from WorkItems. So the query has to be a heirarchical one.
     var queryResultsPromise;
     if (args.backlog) {
-        const areaPaths = utils.getAdoListFromArray(config.get('backlogs')[args.backlog]);
-        if (!areaPaths) {
-            console.error(`'${args.backlog}' not found in config or not setup.`)
+        if (configInfo.backlogs === undefined || configInfo.backlogs[args.backlog] === undefined) {
+            console.error(`Please configure backlog information into ${configInfoFile} for "${args.backlog}"`);
+            throw error;
         }
+
+        const areaPaths = utils.getAdoListFromArray(configInfo.backlogs[args.backlog].areaPaths);
+        if (!areaPaths) {
+            console.error(`areaPaths not setup correctly for '${args.backlog}'`)
+            throw error;
+        }
+
         console.log(`Processing features, requirements and tasks from ${args.areapath}`);
         var queryString =
             `SELECT [System.Id] \
@@ -68,6 +75,10 @@ function executeCostRollup() {
 
         if (args.iterationpath) {
             queryString += `and Source.[System.IterationPath] = '${args.iterationpath}'`;
+        }
+
+        if (configInfo.skipFilter) {
+            queryString += configInfo.skipFilter;
         }
 
         queryString += `MODE (Recursive)`;

@@ -12,10 +12,10 @@ const utils = require('./utils');
 const { cpuUsage } = require('process');
 const { update } = require('lodash');
 
-// Access the personal access token from a local file you need to create
+// Access the personal access token and other sensitive info from a local file you need to create
 // Info on how to create PAT token: https://docs.microsoft.com/en-us/vsts/accounts/use-personal-access-tokens-to-authenticate
-const patFile = path.dirname(require.main.filename) + '\\config\\personal_access_token.json';
-const pat = JSON.parse(fs.readFileSync(patFile));
+const configInfoFile = path.dirname(require.main.filename) + '\\config\\donotcheckin.json';
+const configInfo = JSON.parse(fs.readFileSync(configInfoFile));
 
 const args = processCommandline();
 if (args.help) {
@@ -34,26 +34,44 @@ if (!args.backlog || !args.iterationpath) {
 // and then query for children recursively and do the roll ups per top level item.
 
 const vstsConstants = config.get('constants');
-const vstsEndpointInfo = config.get('endpointInfo');
-var vsoConfig = new utils.VsoConfig(vstsEndpointInfo.vstsBaseUri, vstsEndpointInfo.vstsProject, pat.token);
+const vstsEndpointInfo = configInfo.endpointInfo;
+var vsoConfig = new utils.VsoConfig(vstsEndpointInfo.vstsBaseUri, vstsEndpointInfo.vstsProject, configInfo.token);
 
-const areaPaths = utils.getAdoListFromArray(config.get('backlogs')[args.backlog]);
-if (!areaPaths) {
-    console.error(`'${args.backlog}' not found in config or not setup.`)
+if (configInfo.backlogs === undefined || configInfo.backlogs[args.backlog] === undefined) {
+    console.error(`Please configure backlog information into ${configInfoFile} for "${args.backlog}"`);
+    throw error;
 }
+
+const capacity = configInfo.backlogs[args.backlog].capacity;
+if (!capacity) {
+    console.warn(`Capacity not setup for '${args.backlog}'`); 
+}
+
+const areaPaths = utils.getAdoListFromArray(configInfo.backlogs[args.backlog].areaPaths);
+if (!areaPaths) {
+    console.error(`areaPaths not setup correctly for '${args.backlog}'`)
+    throw error;
+}
+
+var queryString = `SELECT [System.Id]\
+    FROM WorkItems \
+    WHERE [System.WorkItemType] in ('Feature') \
+        and [System.AreaPath] in ${areaPaths} \
+        and [System.IterationPath] = '${args.iterationpath}'\
+        and [System.Tags] NOT CONTAINS 'skip'`;
+
+if (configInfo.skipFilter) {
+    queryString += configInfo.skipFilter;
+}
+
+queryString += `ORDER BY [Microsoft.VSTS.Common.StackRank] ASC`;
 
 utils.vstsApi(
     vsoConfig,
     'POST',
     `${vstsEndpointInfo.vstsBaseUri}/${vstsEndpointInfo.vstsProject}/_apis/wit/wiql`,
     {
-        query: `SELECT [System.Id]\
-        FROM WorkItems \
-        WHERE [System.WorkItemType] in ('Feature') \
-            and [System.AreaPath] in ${areaPaths} \
-            and [System.IterationPath] = '${args.iterationpath}'\
-            and [System.Tags] NOT CONTAINS 'skip'\
-        ORDER BY [Microsoft.VSTS.Common.StackRank] ASC`
+        query: queryString
     }
 )
 .then(queryResults => {
@@ -84,14 +102,22 @@ Custom.InvestmentArea,Microsoft.VSTS.Common.StackRank';
     var releaseTypeCommitted = new DataSlicer('Release type Committed');
     var releaseTypeTargeted = new DataSlicer('Release type Targeted');
 
+    var hasCutlineRendered = false;
+
     _.each(vsoItems.workItems, elm => {
       const workItemDetails = vsoItems.workItemsWithFields[elm.id].fields;
       const remainingDays = workItemDetails['Microsoft.VSTS.Scheduling.RemainingWork'] || 0;
+
+      if (!hasCutlineRendered && capacity && (remainingDaysCumulative + remainingDays >= capacity)) {
+        console.log(`--------------CUT LINE Capacity: ${capacity}, cost: ${remainingDaysCumulative}--------------`);
+        hasCutlineRendered = true;
+      }  
+
       remainingDaysCumulative += remainingDays;
+
       console.log(`${workItemDetails['System.Id']}\t${remainingDaysCumulative}\t${remainingDays}\
         \t${workItemDetails['System.Title']}`);
 
-      // CommittedTargettedCut, Custom.ReleaseType, Custom.InvestmentArea
       const committedKey = workItemDetails['Custom.CommittedTargettedCut'] || '<empty>';
       const releaseTypeKey = workItemDetails['Custom.ReleaseType'] || '<empty>';
       const investmentAreaKey = workItemDetails['Custom.InvestmentArea'] || '<empty>';
