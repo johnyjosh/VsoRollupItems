@@ -9,6 +9,8 @@ const fs = require('fs');
 const cmdargs = require('command-line-args'); // https://www.npmjs.com/package/command-line-args
 const config = require('config');
 const utils = require('./utils');
+const { cpuUsage } = require('process');
+const { update } = require('lodash');
 
 // Access the personal access token from a local file you need to create
 // Info on how to create PAT token: https://docs.microsoft.com/en-us/vsts/accounts/use-personal-access-tokens-to-authenticate
@@ -21,8 +23,8 @@ if (args.help) {
     return;
 }
 
-if (!args.areapath || !args.iterationpath) {
-    showHelp("Both areapath and iterationpath are required parameters.");
+if (!args.backlog || !args.iterationpath) {
+    showHelp("Both backlog and iterationpath are required parameters.");
     return;
 }
 
@@ -35,6 +37,11 @@ const vstsConstants = config.get('constants');
 const vstsEndpointInfo = config.get('endpointInfo');
 var vsoConfig = new utils.VsoConfig(vstsEndpointInfo.vstsBaseUri, vstsEndpointInfo.vstsProject, pat.token);
 
+const areaPaths = utils.getAdoListFromArray(config.get('backlogs')[args.backlog]);
+if (!areaPaths) {
+    console.error(`'${args.backlog}' not found in config or not setup.`)
+}
+
 utils.vstsApi(
     vsoConfig,
     'POST',
@@ -42,16 +49,19 @@ utils.vstsApi(
     {
         query: `SELECT [System.Id]\
         FROM WorkItems \
-        WHERE [System.WorkItemType] in ('Feature') and \
-            [System.AreaPath] = '${args.areapath}' and \
-            [System.IterationPath] = '${args.iterationpath}'\
+        WHERE [System.WorkItemType] in ('Feature') \
+            and [System.AreaPath] in ${areaPaths} \
+            and [System.IterationPath] = '${args.iterationpath}'\
+            and [System.Tags] NOT CONTAINS 'skip'\
         ORDER BY [Microsoft.VSTS.Common.StackRank] ASC`
     }
 )
 .then(queryResults => {
-  const fieldNames = 'System.Id,System.Title,Microsoft.VSTS.Scheduling.RemainingWork,Microsoft.VSTS.Scheduling.CompletedWork,System.IterationPath,System.State,Microsoft.VSTS.Common.StackRank';
+  const fieldNames = 'System.Id,System.Title,Microsoft.VSTS.Scheduling.RemainingWork,Microsoft.VSTS.Scheduling.CompletedWork,\
+System.IterationPath,System.State,Custom.CommittedTargettedCut,Custom.ReleaseType,\
+Custom.InvestmentArea,Microsoft.VSTS.Common.StackRank';
 
-   // 3. Query for additional fields for each of the work items
+   // 2. Query for additional fields for each of the work items
    return utils.getWorkItemFields(vsoConfig, _.map(queryResults.workItems, x => x.id), fieldNames)
    .then(workItemsWithFields => {
        return {
@@ -66,13 +76,84 @@ utils.vstsApi(
 .then(vsoItems => {
     var remainingDaysCumulative = 0;
     console.log('Id\tRemainingDaysCumulative\tRemainingWork\tTitle');
+
+    var commitmentLevel = new DataSlicer('Commitment Level');
+    var releaseType = new DataSlicer('Release type');
+    var investmentArea = new DataSlicer('Investment Area');
+
+    var releaseTypeCommitted = new DataSlicer('Release type Committed');
+    var releaseTypeTargeted = new DataSlicer('Release type Targeted');
+
     _.each(vsoItems.workItems, elm => {
-      var workItemDetails = vsoItems.workItemsWithFields[elm.id].fields;
-      remainingDaysCumulative +=  workItemDetails['Microsoft.VSTS.Scheduling.RemainingWork'] || 0;
-      console.log(`${workItemDetails['System.Id']}\t${remainingDaysCumulative}\t${workItemDetails['Microsoft.VSTS.Scheduling.RemainingWork']}\
-      \t${workItemDetails['System.Title']}`);
+      const workItemDetails = vsoItems.workItemsWithFields[elm.id].fields;
+      const remainingDays = workItemDetails['Microsoft.VSTS.Scheduling.RemainingWork'] || 0;
+      remainingDaysCumulative += remainingDays;
+      console.log(`${workItemDetails['System.Id']}\t${remainingDaysCumulative}\t${remainingDays}\
+        \t${workItemDetails['System.Title']}`);
+
+      // CommittedTargettedCut, Custom.ReleaseType, Custom.InvestmentArea
+      const committedKey = workItemDetails['Custom.CommittedTargettedCut'] || '<empty>';
+      const releaseTypeKey = workItemDetails['Custom.ReleaseType'] || '<empty>';
+      const investmentAreaKey = workItemDetails['Custom.InvestmentArea'] || '<empty>';
+      
+      commitmentLevel.addItem(committedKey, remainingDays, elm.id);
+      releaseType.addItem(releaseTypeKey, remainingDays, elm.id);
+      if (committedKey == 'Committed') {
+        releaseTypeCommitted.addItem(releaseTypeKey, remainingDays, elm.id);
+      } else if (committedKey == 'Targeted') {
+        releaseTypeTargeted.addItem(releaseTypeKey, remainingDays, elm.id);
+      }
+      investmentArea.addItem(investmentAreaKey, remainingDays, elm.id);
     });
+
+    commitmentLevel.print();
+    releaseType.print();
+    releaseTypeCommitted.print();
+    releaseTypeTargeted.print();
+    investmentArea.print();
 })
+
+
+class DataSlicer {
+    constructor(name) {
+        this.name = name;
+        this.total = 0;
+        this.totalCount = 0;
+        this.buckets = {};
+    }
+
+    addItem(key, value, id) {
+        this.total += value;
+        this.totalCount++;
+        if (this.buckets[key] === undefined) {
+            this.buckets[key] = {value:0, count:0, ids:[]};
+        }
+        this.buckets[key].value += value;
+        this.buckets[key].count++;
+        this.buckets[key].ids.push(id);
+    }
+
+    print() {
+        console.log(`\n------------- ${this.name} -------------`);
+    
+        console.log("Days:");
+        for (let key in this.buckets) {
+            const value = this.buckets[key].value;
+            console.log(`${key},\t${value},\t${(value * 100/this.total).toFixed(0)}%`);
+        }
+
+        console.log();
+        console.log("Count:");
+        for (let key in this.buckets) {
+            const ids = this.buckets[key].ids;
+            const count = this.buckets[key].count;
+            console.log(`${key},\t${count},\t${(count * 100/this.totalCount).toFixed(0)}%`);
+            //console.log(ids.join(",")); (debug only)
+        }
+    }
+
+}
+
 
 function showHelp(helpString) {
     if (helpString) {
@@ -83,8 +164,8 @@ function showHelp(helpString) {
     console.log(`--help (or -h)`);
     console.log(`   Show this help.`);
     console.log('');
-    console.log(`--areapath (or -p) [Required parameter]`);
-    console.log(`   Provide the area path to process (for example: MSTeams\\Calling Meeting Devices (CMD)\\Broadcast).`);
+    console.log(`--backlog (or -b) <broadcast | transcript> [Required parameter]`);
+    console.log(`   Pass the backlog to process. The backlog name need to be registered in the config.`);
     console.log('');
     console.log(`--iterationpath (or -i) [Required parameter]`);
     console.log(`   Provide the specific iteration to list out (for example: MSTeams\\2019\\Q2).`);
@@ -97,7 +178,7 @@ function showHelp(helpString) {
 function processCommandline() {
     const options = [
         { name: 'help', alias: 'h', type: Boolean},
-        { name: 'areapath', alias: 'p', type: String },
+        { name: 'backlog', alias: 'b', type: String },
         { name: 'iterationpath', alias: 'i', type: String }
     ];
     const args = cmdargs(options);
