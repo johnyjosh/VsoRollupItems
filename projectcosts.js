@@ -110,7 +110,7 @@ Custom.InvestmentArea,Microsoft.VSTS.Common.StackRank';
         return false;
       }
 
-      if (tags && tags.search(config.get('skip')) >= 0) {
+      if (tags && tags.search(config.get('skipTag')) >= 0) {
           // This is so we can skip over the separators.
           // Wanted to see the separators in the console output  but not have it count in the stats calculations below
           return true;
