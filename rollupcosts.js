@@ -31,14 +31,11 @@ if (!args.config || !args.iterationpath) {
 }
 const configInfo = JSON.parse(fs.readFileSync(args.config));
 
-// Access the personal access token and other sensitive info from a local file that isn't checked in.
-// The file needs to be in the program's config directory and the name is in default.json in the "securityInfoSettingsFile" property.
-// Info on how to create PAT token: https://docs.microsoft.com/en-us/vsts/accounts/use-personal-access-tokens-to-authenticate
-const securityInfoFile = path.dirname(require.main.filename) + '\\config\\' + config.get('securityInfoSettingsFile');
-const securityInfo = JSON.parse(fs.readFileSync(securityInfoFile));
+const adoInfoFile = path.dirname(require.main.filename) + '\\config\\' + config.get('adoInfoSettingsFile');
+const adoInfo = JSON.parse(fs.readFileSync(adoInfoFile));
 
-const vstsEndpointInfo = securityInfo.endpointInfo;
-var vsoConfig = new utils.VsoConfig(vstsEndpointInfo.vstsBaseUri, vstsEndpointInfo.vstsProject, securityInfo.adoPersonalAccesstoken);
+const vstsEndpointInfo = adoInfo.endpointInfo;
+var vsoConfig = new utils.VsoConfig(vstsEndpointInfo.vstsBaseUri, vstsEndpointInfo.vstsProject, adoInfo.adoPersonalAccesstoken);
 const fieldsToRollup = config.get('fieldsToRollup');
 
 executeCostRollup(vsoConfig);
@@ -204,7 +201,7 @@ function updateCosts(vsoItems) {
     const ids = _.map(vsoItems.workItemsWithFields, (v,id) => id);
 
     const filteredIds = _.filter(ids, (id) => vsoItems.workItemsWithFields[id].state.isUpdateRequired);
-    const cappedIds = _.take(filteredIds, args.forcecap || vstsConstants.maxUpdates);
+    const cappedIds = _.take(filteredIds, args.forcecap || config.get('maxUpdates'));
     if (filteredIds.length != cappedIds.length) {
         console.error(`Warning: ${filteredIds.length} updates computed, capping to ${cappedIds.length}`);
     }
