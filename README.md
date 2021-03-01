@@ -16,7 +16,7 @@ npm install
 ```
 {
   "comment": "This file has sensitive information and should never be checked into a public github.",
-  "adoPersonalAccesstoken": "...",
+  "adoPersonalAccesstoken": "***",
   "endpointInfo": {
     "vstsBaseUri": "https://{teamname}.visualstudio.com/defaultcollection",
     "vstsProject": "{projectName}"
