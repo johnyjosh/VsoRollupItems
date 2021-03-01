@@ -28,7 +28,7 @@ npm install
 The "skipTag" is used in projectcosts.js to exclude certain items from processing, especially the summarized 
 The "cutlineTag" is the marker for where the script will stop processing.
 
-5. Create a config\donotcheckin_{blah}.json file with information about the area paths you want to process and the capacity limit you want to apply for the cutline analysis from projectcosts.js:
+5. Create a config\donotcheckin_{blah}.json file with information about the area paths you want to process and the capacity limit you want to apply for the cutline analysis from projectcosts.js. You can have multiple of these so that you can manage multiple backlogs independently.
 ```
 {
     "comment": "This file has sensitive information and should never be checked into a public github.",
@@ -36,7 +36,7 @@ The "cutlineTag" is the marker for where the script will stop processing.
     "capacity" : 500
 }
 ```
-You can also add two othe optional parameters:
+You can also add two optional parameters that allow you to further customize the query filter criteria for the two tools. This is useful if you have other co-owners that operate within the same area paths and you want to skip processing their items to avoid collisions.
 ```
 "queryExtensionForRollup"     : "AND Source.[Custom.DeveloperContentOwner] NOT CONTAINS 'blah1' AND Source.[Custom.DeveloperContentOwner] NOT CONTAINS 'blah2'",
 "queryExtensionForProjection" : "AND [Custom.DeveloperContentOwner] NOT CONTAINS 'blah1' AND [Custom.DeveloperContentOwner] NOT CONTAINS 'blah2'"
