@@ -84,17 +84,18 @@ Custom.InvestmentArea,Microsoft.VSTS.Common.StackRank';
     var releaseType = new DataSlicer('Release type');
     var investmentArea = new DataSlicer('Investment Area');
 
-    var releaseTypeCommitted = new DataSlicer('Release type Committed');
-    var releaseTypeTargeted = new DataSlicer('Release type Targeted');
+    var releaseTypeCommitted = new DataSlicer('Release type for Committed items');
+    var releaseTypeTargeted = new DataSlicer('Release type for Targeted items');
 
     var hasCutlineRendered = false;
+    var stopProcessing = false;
 
     _.each(vsoItems.workItems, elm => {
       const workItemDetails = vsoItems.workItemsWithFields[elm.id].fields;
       const remainingDays = workItemDetails['Microsoft.VSTS.Scheduling.RemainingWork'] || 0;
 
       if (!hasCutlineRendered && capacity && (remainingDaysCumulative + remainingDays >= capacity)) {
-        console.log(`--------------CUT LINE Capacity: ${capacity}, cost: ${remainingDaysCumulative}--------------`);
+        console.log(`--------------Cutline: Capacity: ${capacity}, Cost: ${remainingDaysCumulative}--------------`);
         hasCutlineRendered = true;
       }  
 
@@ -107,7 +108,8 @@ Custom.InvestmentArea,Microsoft.VSTS.Common.StackRank';
       
       if (tags && tags.search(config.get('cutlineTag')) >= 0) {
         // We don't want to compute stats beyond the current cut line
-        return false;
+        stopProcessing = true;
+        return true;
       }
 
       if (tags && tags.search(config.get('skipTag')) >= 0) {
@@ -116,18 +118,20 @@ Custom.InvestmentArea,Microsoft.VSTS.Common.StackRank';
           return true;
       }
 
-      const committedKey = workItemDetails['Custom.CommittedTargettedCut'] || '<empty>';
-      const releaseTypeKey = workItemDetails['Custom.ReleaseType'] || '<empty>';
-      const investmentAreaKey = workItemDetails['Custom.InvestmentArea'] || '<empty>';
-      
-      commitmentLevel.addItem(committedKey, remainingDays, elm.id);
-      releaseType.addItem(releaseTypeKey, remainingDays, elm.id);
-      if (committedKey == 'Committed') {
-        releaseTypeCommitted.addItem(releaseTypeKey, remainingDays, elm.id);
-      } else if (committedKey == 'Targeted') {
-        releaseTypeTargeted.addItem(releaseTypeKey, remainingDays, elm.id);
+      if (!stopProcessing) {
+        const committedKey = workItemDetails['Custom.CommittedTargettedCut'] || '<empty>';
+        const releaseTypeKey = workItemDetails['Custom.ReleaseType'] || '<empty>';
+        const investmentAreaKey = workItemDetails['Custom.InvestmentArea'] || '<empty>';
+        
+        commitmentLevel.addItem(committedKey, remainingDays, elm.id);
+        releaseType.addItem(releaseTypeKey, remainingDays, elm.id);
+        if (committedKey == 'Committed') {
+            releaseTypeCommitted.addItem(releaseTypeKey, remainingDays, elm.id);
+        } else if (committedKey == 'Targeted') {
+            releaseTypeTargeted.addItem(releaseTypeKey, remainingDays, elm.id);
+        }
+        investmentArea.addItem(investmentAreaKey, remainingDays, elm.id);
       }
-      investmentArea.addItem(investmentAreaKey, remainingDays, elm.id);
     });
 
     commitmentLevel.print();
