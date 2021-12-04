@@ -46,7 +46,7 @@ var queryString = `SELECT [System.Id]\
         and [System.IterationPath] = '${args.iterationpath}'`;
 
 if (configInfo.queryExtensionForProjection) {
-    queryString += configInfo.queryExtensionForProjection;
+    queryString += ' AND ' + '(' + configInfo.queryExtensionForProjection + ')';
 }
 
 queryString += `ORDER BY [Microsoft.VSTS.Common.StackRank] ASC`;
@@ -78,7 +78,7 @@ Custom.InvestmentArea,Microsoft.VSTS.Common.StackRank';
    })})
 .then(vsoItems => {
     var remainingDaysCumulative = 0;
-    console.log('Id\tRemainingDaysCumulative\tRemainingWork\tTitle');
+    console.log('Id\tRemainingDaysCumulative\tRemainingWork\tInvestment\tCommittedTargetted\tRelease\tTitle');
 
     var commitmentLevel = new DataSlicer('Commitment Level');
     var releaseType = new DataSlicer('Release type');
@@ -101,28 +101,38 @@ Custom.InvestmentArea,Microsoft.VSTS.Common.StackRank';
 
       remainingDaysCumulative += remainingDays;
 
-      console.log(`${workItemDetails['System.Id']}\t${remainingDaysCumulative}\t${remainingDays}\
-        \t${workItemDetails['System.Title']}`);
-
       var tags = workItemDetails['System.Tags'];
-      
-      if (tags && tags.search(config.get('cutlineTag')) >= 0) {
+
+      var skipTag = false;
+      if (tags && tags.search(config.get('skipTag')) >= 0) {
+        skipTag = true;
+      }
+      var committedKey = workItemDetails['Custom.CommittedTargettedCut'] || '<empty>';
+      var investmentAreaKey = workItemDetails['Custom.InvestmentArea'] || '<empty>';
+      var releaseTypeKey = workItemDetails['Custom.ReleaseType'] || '<empty>';
+
+      if (skipTag === true) {
+        committedKey = "N/A";
+        investmentAreaKey = "N/A";
+        releaseTypeKey = "N/A";
+      }
+
+      console.log(`${workItemDetails['System.Id']}\t${remainingDaysCumulative}\t${remainingDays}\
+        \t${workItemDetails['System.State']}\t${investmentAreaKey}\t${committedKey}\t${releaseTypeKey}\t${workItemDetails['System.Title']}`);
+
+      if ((tags && tags.search(config.get('cutlineTag')) >= 0) || committedKey === "Hard Cut") {
         // We don't want to compute stats beyond the current cut line
         stopProcessing = true;
         return true;
       }
 
-      if (tags && tags.search(config.get('skipTag')) >= 0) {
+      if (skipTag) {
           // This is so we can skip over the separators.
           // Wanted to see the separators in the console output  but not have it count in the stats calculations below
           return true;
       }
 
       if (!stopProcessing) {
-        const committedKey = workItemDetails['Custom.CommittedTargettedCut'] || '<empty>';
-        const releaseTypeKey = workItemDetails['Custom.ReleaseType'] || '<empty>';
-        const investmentAreaKey = workItemDetails['Custom.InvestmentArea'] || '<empty>';
-        
         commitmentLevel.addItem(committedKey, remainingDays, elm.id);
         releaseType.addItem(releaseTypeKey, remainingDays, elm.id);
         if (committedKey == 'Committed') {

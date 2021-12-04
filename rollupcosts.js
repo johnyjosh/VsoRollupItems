@@ -81,7 +81,7 @@ function executeCostRollup(vsoConfig) {
         }
 
         if (configInfo.queryExtensionForRollup) {
-            queryString += configInfo.queryExtensionForRollup;
+            queryString += ' AND ' + '(' + configInfo.queryExtensionForRollup + ')';
         }
 
         queryString += `MODE (Recursive)`;
