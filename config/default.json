@@ -2,7 +2,7 @@
   "fieldsToRollup": ["Microsoft.VSTS.Scheduling.RemainingWork", "Microsoft.VSTS.Scheduling.OriginalEstimate"],
   "batchSize": 50,
   "maxUpdates": 100,
-  "adoInfoSettingsFile": "donotcheckin_adoinfo.json",
+  "adoInfoSettingsFile": "adoinfo_donotcheckin.json",
   "skipTag" : "skip",
   "cutlineTag" : "Cutline"
 }
