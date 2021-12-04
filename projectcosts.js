@@ -43,7 +43,7 @@ var queryString = `SELECT [System.Id]\
     FROM WorkItems \
     WHERE [System.WorkItemType] in ('Feature') \
         and [System.AreaPath] in ${areaPaths} \
-        and [System.IterationPath] = '${args.iterationpath}'`;
+        and [System.IterationPath] under '${args.iterationpath}'`;
 
 if (configInfo.queryExtensionForProjection) {
     queryString += ' AND ' + '(' + configInfo.queryExtensionForProjection + ')';

@@ -77,7 +77,7 @@ function executeCostRollup(vsoConfig) {
                     and Target.[System.WorkItemType] in ('Feature', 'Requirement', 'Task', 'bug')`;
 
         if (args.iterationpath) {
-            queryString += `and Source.[System.IterationPath] = '${args.iterationpath}'`;
+            queryString += `and Source.[System.IterationPath] under '${args.iterationpath}'`;
         }
 
         if (configInfo.queryExtensionForRollup) {
