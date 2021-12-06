@@ -90,18 +90,31 @@ Custom.InvestmentArea,Microsoft.VSTS.Common.StackRank';
     var hasCutlineRendered = false;
     var stopProcessing = false;
 
+    var skipTagName = config.get('skipTag');
+    var cutlineTagName = config.get('cutlineTag');
+
     _.each(vsoItems.workItems, elm => {
       const workItemDetails = vsoItems.workItemsWithFields[elm.id].fields;
       const remainingDays = workItemDetails['Microsoft.VSTS.Scheduling.RemainingWork'] || 0;
 
-      remainingDaysCumulative += remainingDays;
-
       var tags = workItemDetails['System.Tags'];
 
       var skipTag = false;
-      if (tags && tags.search(config.get('skipTag')) >= 0) {
+      if (tags && tags.search(skipTagName) >= 0) {
         skipTag = true;
       }
+
+      // First check if we've reached capacity in which case draw our computed cut line first
+      if (!hasCutlineRendered && capacity && (remainingDaysCumulative + remainingDays >= capacity)) {
+        // We don't want to compute stats beyond the computed cut line
+        console.log(`--------------Cutline: Capacity: ${capacity}, Cost: ${remainingDaysCumulative}--------------`);
+        hasCutlineRendered = true;
+        stopProcessing = true;
+      }
+
+      remainingDaysCumulative += remainingDays;
+
+      // Next display the item with all the key properties
       var committedKey = workItemDetails['Custom.CommittedTargettedCut'] || '<empty>';
       var investmentAreaKey = workItemDetails['Custom.InvestmentArea'] || '<empty>';
       var releaseTypeKey = workItemDetails['Custom.ReleaseType'] || '<empty>';
@@ -114,25 +127,19 @@ Custom.InvestmentArea,Microsoft.VSTS.Common.StackRank';
 
       console.log(`${workItemDetails['System.Id']}\t${remainingDaysCumulative}\t${remainingDays}\
         \t${workItemDetails['System.State']}\t${investmentAreaKey}\t${committedKey}\t${releaseTypeKey}\t${workItemDetails['System.Title']}`);
+  
+      // Next display stats if
+      if (committedKey === "Hard Cut" || skipTag) {
+        // We don't want to compute stats for hard cut items
+        // Also skip over any separator items that are put into backlog for visual delineation and aren't real feature items
+        return true;
+      }
 
-      if ((tags && tags.search(config.get('cutlineTag')) >= 0) || committedKey === "Hard Cut") {
+      if (tags && (tags.search(cutlineTagName) >= 0)) {
         // We don't want to compute stats beyond the user set cut line or hard cut items
         console.log(`--------------user defined cutline--------------`);
         stopProcessing = true;
         return true;
-      }
-
-      if (!hasCutlineRendered && capacity && (remainingDaysCumulative + remainingDays >= capacity)) {
-        // We don't want to compute stats beyond the computed cut line
-        console.log(`--------------Cutline: Capacity: ${capacity}, Cost: ${remainingDaysCumulative}--------------`);
-        hasCutlineRendered = true;
-        stopProcessing = true;
-      }  
-
-      if (skipTag) {
-          // This is so we can skip over the separators.
-          // Wanted to see the separators in the console output  but not have it count in the stats calculations below
-          return true;
       }
 
       if (!stopProcessing) {
