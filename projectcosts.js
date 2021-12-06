@@ -128,7 +128,6 @@ Custom.InvestmentArea,Microsoft.VSTS.Common.StackRank';
       console.log(`${workItemDetails['System.Id']}\t${remainingDaysCumulative}\t${remainingDays}\
         \t${workItemDetails['System.State']}\t${investmentAreaKey}\t${committedKey}\t${releaseTypeKey}\t${workItemDetails['System.Title']}`);
   
-      // Next display stats if
       if (committedKey === "Hard Cut" || skipTag) {
         // We don't want to compute stats for hard cut items
         // Also skip over any separator items that are put into backlog for visual delineation and aren't real feature items
