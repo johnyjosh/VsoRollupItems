@@ -94,11 +94,6 @@ Custom.InvestmentArea,Microsoft.VSTS.Common.StackRank';
       const workItemDetails = vsoItems.workItemsWithFields[elm.id].fields;
       const remainingDays = workItemDetails['Microsoft.VSTS.Scheduling.RemainingWork'] || 0;
 
-      if (!hasCutlineRendered && capacity && (remainingDaysCumulative + remainingDays >= capacity)) {
-        console.log(`--------------Cutline: Capacity: ${capacity}, Cost: ${remainingDaysCumulative}--------------`);
-        hasCutlineRendered = true;
-      }  
-
       remainingDaysCumulative += remainingDays;
 
       var tags = workItemDetails['System.Tags'];
@@ -121,10 +116,18 @@ Custom.InvestmentArea,Microsoft.VSTS.Common.StackRank';
         \t${workItemDetails['System.State']}\t${investmentAreaKey}\t${committedKey}\t${releaseTypeKey}\t${workItemDetails['System.Title']}`);
 
       if ((tags && tags.search(config.get('cutlineTag')) >= 0) || committedKey === "Hard Cut") {
-        // We don't want to compute stats beyond the current cut line
+        // We don't want to compute stats beyond the user set cut line or hard cut items
+        console.log(`--------------user defined cutline--------------`);
         stopProcessing = true;
         return true;
       }
+
+      if (!hasCutlineRendered && capacity && (remainingDaysCumulative + remainingDays >= capacity)) {
+        // We don't want to compute stats beyond the computed cut line
+        console.log(`--------------Cutline: Capacity: ${capacity}, Cost: ${remainingDaysCumulative}--------------`);
+        hasCutlineRendered = true;
+        stopProcessing = true;
+      }  
 
       if (skipTag) {
           // This is so we can skip over the separators.
