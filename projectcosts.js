@@ -105,7 +105,7 @@ Custom.InvestmentArea,Microsoft.VSTS.Common.StackRank';
       }
 
       // First check if we've reached capacity in which case draw our computed cut line first
-      if (!hasCutlineRendered && capacity && (remainingDaysCumulative + remainingDays >= capacity)) {
+      if (!hasCutlineRendered && capacity && (remainingDaysCumulative + remainingDays > capacity)) {
         // We don't want to compute stats beyond the computed cut line
         console.log(`--------------Cutline: Capacity: ${capacity}, Cost: ${remainingDaysCumulative}--------------`);
         hasCutlineRendered = true;
