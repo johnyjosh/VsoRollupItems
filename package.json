@@ -5,7 +5,7 @@
   "main": "app.js",
   "dependencies": {
     "command-line-args": "^4.0.7",
-    "config": "^1.31.0",
+    "config": "^3.3.8",
     "fs": "0.0.1-security",
     "lodash": "^4.17.21",
     "path": "^0.12.7",
